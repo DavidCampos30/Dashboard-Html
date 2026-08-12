@@ -27,7 +27,6 @@
                 <p class="text-indigo-200 text-sm">Monitoreo y Gestión de Casos de Soporte Técnico</p>
             </div>
             <div class="mt-4 md:mt-0 flex flex-wrap gap-3">
-                <!-- Botón de Carga de Archivo CSV -->
                 <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="handleFileUpload(event)">
                 <button onclick="document.getElementById('csv-file-input').click()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center shadow">
                     <i class="fa-solid fa-file-csv mr-2 text-lg"></i>Cargar Dataset.csv
@@ -97,7 +96,7 @@
                 <div class="h-64"><canvas id="chartCompany"></canvas></div>
             </div>
             <div class="card">
-                <h3 class="text-base font-bold text-gray-700 mb-4">Distribución por Tipo de Caso</h3>
+                <h3 class="text-base font-bold text-gray-700 mb-4">Días Transcurridos en Casos Pendientes (> 2 Días)</h3>
                 <div class="h-64"><canvas id="chartType"></canvas></div>
             </div>
             <div class="card">
@@ -176,12 +175,36 @@
 
         let rawData = [];
         let filteredData = [];
-
-        // Variables de Paginación
         let currentPage = 1;
         let rowsPerPage = 10;
-
         let chartCompany, chartType, chartService, chartPending;
+
+        // Función para parsear fechas en formato español DD/MM/YYYY o DD/MM/YYYY HH:mm
+        function parseSpanishDate(dateStr) {
+            if (!dateStr) return null;
+            const cleanStr = String(dateStr).trim();
+            const parts = cleanStr.split(/[\sT]+/);
+            const dateParts = parts[0].split(/[\/\-]/);
+            
+            if (dateParts.length === 3) {
+                let day, month, year;
+                if (dateParts[0].length === 4) {
+                    year = parseInt(dateParts[0], 10);
+                    month = parseInt(dateParts[1], 10) - 1;
+                    day = parseInt(dateParts[2], 10);
+                } else {
+                    day = parseInt(dateParts[0], 10);
+                    month = parseInt(dateParts[1], 10) - 1;
+                    year = parseInt(dateParts[2], 10);
+                }
+
+                if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+                    return new Date(year, month, day);
+                }
+            }
+            const fallback = new Date(cleanStr);
+            return isNaN(fallback.getTime()) ? null : fallback;
+        }
 
         function handleFileUpload(event) {
             const file = event.target.files[0];
@@ -265,7 +288,7 @@
                 return matchComp && matchType && matchStatus && matchSearch;
             });
 
-            currentPage = 1; // Reiniciar a la primera página al aplicar un filtro
+            currentPage = 1;
             updateDashboard();
         }
 
@@ -280,9 +303,8 @@
         }
 
         function updateDashboard() {
-            // KPIs
             document.getElementById('kpi-total').innerText = filteredData.length;
-            document.getElementById('kpi-cerrados').innerText = filteredData.filter(d => (d.Estado || '') === 'Cerrado').length;
+            document.getElementById('kpi-cerrados').innerText = filteredData.filter(d => (d.Estado || '').toLowerCase() === 'cerrado').length;
             document.getElementById('kpi-incidentes').innerText = filteredData.filter(d => (d['Tipo de caso'] || d.Tipo || '') === 'Incidentes').length;
             document.getElementById('kpi-req').innerText = filteredData.filter(d => (d['Tipo de caso'] || d.Tipo || '') === 'Requerimiento de Servicio').length;
 
@@ -309,10 +331,10 @@
                     const st = (d.Estado || '').trim();
                     let statusBadgeClass = 'bg-gray-100 text-gray-700';
 
-                    if (st === 'Cerrado' || st === 'Resuelto') statusBadgeClass = 'bg-emerald-100 text-emerald-700';
-                    else if (st === 'Pendiente') statusBadgeClass = 'bg-amber-100 text-amber-700';
-                    else if (st === 'Asignado') statusBadgeClass = 'bg-blue-100 text-blue-700';
-                    else if (st === 'Nuevo' || st === 'Abierto') statusBadgeClass = 'bg-red-100 text-red-700';
+                    if (st.toLowerCase() === 'cerrado' || st.toLowerCase() === 'resuelto') statusBadgeClass = 'bg-emerald-100 text-emerald-700';
+                    else if (st.toLowerCase() === 'pendiente') statusBadgeClass = 'bg-amber-100 text-amber-700';
+                    else if (st.toLowerCase() === 'asignado') statusBadgeClass = 'bg-blue-100 text-blue-700';
+                    else if (st.toLowerCase() === 'nuevo' || st.toLowerCase() === 'abierto') statusBadgeClass = 'bg-red-100 text-red-700';
 
                     return `
                     <tr class="hover:bg-gray-50">
@@ -327,7 +349,6 @@
                 }).join('');
             }
 
-            // Actualizar controles de paginación
             document.getElementById('pagination-info').innerText = total > 0 
                 ? `Mostrando ${start + 1} a ${end} de ${total} registros`
                 : 'Mostrando 0 a 0 de 0 registros';
@@ -395,9 +416,33 @@
 
             const ctx2 = document.getElementById('chartType').getContext('2d');
             chartType = new Chart(ctx2, { 
-                type: 'doughnut', 
-                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#f59e0b', '#3b82f6'] }] }, 
-                options: { responsive: true, maintainAspectRatio: false, plugins: { datalabels: { display: false } } } 
+                type: 'bar', 
+                data: { labels: [], datasets: [{ label: 'Días Transcurridos', data: [], backgroundColor: '#f59e0b' }] }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    layout: { padding: { top: 20 } },
+                    plugins: { 
+                        legend: { display: false },
+                        datalabels: { 
+                            anchor: 'end',
+                            align: 'end',
+                            offset: 4,
+                            color: '#b45309',
+                            font: { weight: 'bold', size: 12 },
+                            formatter: (value) => value + ' días'
+                        } 
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            title: { display: true, text: 'Días Transcurridos' }
+                        },
+                        x: {
+                            title: { display: true, text: 'Caso (Pendientes con > 2 Días)' }
+                        }
+                    }
+                } 
             });
 
             const ctx3 = document.getElementById('chartService').getContext('2d');
@@ -453,9 +498,33 @@
             chartCompany.data.datasets[0].data = Object.values(compCounts);
             chartCompany.update();
 
-            const typeCounts = countBy(filteredData, d => d['Tipo de caso'] || d.Tipo);
-            chartType.data.labels = Object.keys(typeCounts);
-            chartType.data.datasets[0].data = Object.values(typeCounts);
+            // Filtrar SOLO casos en Estado "Pendiente" y parsear fechas DD/MM/YYYY
+            const today = new Date();
+            const pendingCasesData = [];
+
+            filteredData.forEach(d => {
+                const dateStr = d['Fecha de registro'] || d['Fecha registro'] || d['Fecha Creado'] || d.Fecha;
+                const status = (d.Estado || '').trim().toLowerCase();
+
+                if (dateStr && status === 'pendiente') {
+                    const regDate = parseSpanishDate(dateStr);
+                    if (regDate) {
+                        const diffTime = today - regDate;
+                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+                        // Solo aquellos casos con más de 2 días transcurridos (3 días en adelante)
+                        if (diffDays > 2) {
+                            pendingCasesData.push({
+                                caso: d.Caso || 'Sin ID',
+                                dias: diffDays
+                            });
+                        }
+                    }
+                }
+            });
+
+            chartType.data.labels = pendingCasesData.map(item => item.caso);
+            chartType.data.datasets[0].data = pendingCasesData.map(item => item.dias);
             chartType.update();
 
             const servCounts = countBy(filteredData, d => d.Servicio);
@@ -464,7 +533,6 @@
             chartService.data.datasets[0].data = sortedServ.map(s => s[1]);
             chartService.update();
 
-            // Filtrar casos 'Pendiente', 'Asignado' y 'Nuevo'
             const pendingCases = filteredData.filter(d => {
                 const st = (d.Estado || '').trim().toLowerCase();
                 return st === 'pendiente' || st === 'asignado' || st === 'nuevo';
